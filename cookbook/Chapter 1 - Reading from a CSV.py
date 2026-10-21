@@ -1,69 +1,103 @@
+
 # %%
-import pandas as pd
+from pathlib import Path
+import polars as pl
 import matplotlib.pyplot as plt
+import io
 
 
 # %%
-# Reading data from a csv file
-# You can read data from a CSV file using the `read_csv` function. By default, it assumes that the fields are comma-separated.
+# Locate the data file relative to this Python script.
+# Script: cookbook/Chapter 1 - Reading from a CSV.py
+# Data:   data/bikes.csv
 
-# We're going to be looking at some cyclist data from Montréal. Here's the [original page](http://donnees.ville.montreal.qc.ca/dataset/velos-comptage) (in French), but it's already included in this repository. We're using the data from 2012.
+project_root = Path(__file__).resolve().parent.parent
+data_path = project_root / "data" / "bikes.csv"
 
-# This dataset is a list of how many people were on 7 different bike paths in Montreal, each day.
+print("Data file:", data_path)
+print("File exists:", data_path.exists())
 
-broken_df = pd.read_csv("../data/bikes.csv", encoding="ISO-8859-1")
+# Read the CSV text using the correct encoding.
+with open(data_path, "r", encoding="ISO-8859-1") as f:
+    bikes_csv = f.read()
 
-# TODO: please load the data with the Polars library (do not forget to import Polars at the top of the script) and call it pl_broken_df
-
-# %%
-# Look at the first 3 rows
-broken_df[:3]
-
-# TODO: do the same with your polars data frame, pl_broken_df
 
 # %%
-# You'll notice that this is totally broken! `read_csv` has a bunch of options that will let us fix that, though. Here we'll
+# Reading data from a CSV file
+# First, use the default comma separator to demonstrate
+# why the original data appears broken.
 
-# * change the column separator to a `;`
-# * Set the encoding to `'latin1'` (the default is `'utf8'`)
-# * Parse the dates in the 'Date' column
-# * Tell it that our dates have the day first instead of the month first
-# * Set the index to be the 'Date' column
+pl_broken_df = pl.read_csv(io.StringIO(bikes_csv))
 
-fixed_df = pd.read_csv(
-    "../data/bikes.csv",
-    sep=";",
-    encoding="latin1",
-    parse_dates=["Date"],
-    dayfirst=True,
-    index_col="Date",
+print("\n--- Original data read with the default separator ---")
+print(pl_broken_df.head(3))
+
+
+# %%
+# Read the CSV with the correct separator.
+# The original file uses semicolons.
+fixed_df = pl.read_csv(
+    io.StringIO(bikes_csv),
+    separator=";"
 )
-fixed_df[:3]
 
-# TODO: do the same (or similar) with polars
+# Parse the Date column, with day before month.
+fixed_df = fixed_df.with_columns(
+    pl.col("Date").str.strptime(
+        pl.Date,
+        format="%d/%m/%Y",
+        strict=False
+    )
+)
+
+print("\n--- Correctly parsed data: first 3 rows ---")
+print(fixed_df.head(3))
+
+print("\n--- Data schema ---")
+print(fixed_df.schema)
+
+print("\n--- Null counts ---")
+print(fixed_df.null_count())
 
 
 # %%
 # Selecting a column
-# When you read a CSV, you get a kind of object called a `DataFrame`, which is made up of rows and columns. You get columns out of a DataFrame the same way you get elements out of a dictionary.
-
-# Here's an example:
-fixed_df["Berri 1"]
-
-# TODO: how would you do this with a Polars data frame?
+print("\n--- Berri 1 column ---")
+print(fixed_df["Berri 1"])
 
 
 # %%
-# Plotting is quite easy in Pandas
-fixed_df["Berri 1"].plot()
+# Plotting one bike path
+plt.figure(figsize=(15, 5))
 
-# TODO: how would you do this with a Polars data frame?
+plt.plot(
+    fixed_df["Date"].to_list(),
+    fixed_df["Berri 1"].to_list()
+)
+
+plt.xlabel("Date")
+plt.ylabel("Number of cyclists")
+plt.title("Daily cyclist counts on Berri 1")
+plt.tight_layout()
+plt.show()
 
 
 # %%
-# We can also plot all the columns just as easily. We'll make it a little bigger, too.
-# You can see that it's more squished together, but all the bike paths behave basically the same -- if it's a bad day for cyclists, it's a bad day everywhere.
+# Plot all bike paths
+plt.figure(figsize=(15, 10))
 
-fixed_df.plot(figsize=(15, 10))
+for column in fixed_df.columns:
+    if column != "Date":
+        plt.plot(
+            fixed_df["Date"].to_list(),
+            fixed_df[column].to_list(),
+            label=column
+        )
 
-# TODO: how would you do this with a Polars data frame? With Polars data frames you might have to use the Seaborn library and it mmight not work out of the box as with pandas.
+plt.xlabel("Date")
+plt.ylabel("Number of cyclists")
+plt.title("Daily cyclist counts on Montreal bike paths")
+plt.legend()
+plt.tight_layout()
+plt.show()
+
